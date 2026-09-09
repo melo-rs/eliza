@@ -1,5 +1,6 @@
 [package]
 name = "eliza"
+description = "A lightweight HTTP framework for Rust focused on performance without sacrificing ergonomics."
 version = "0.1.0"
 authors = ["Davi Melo <hello@dmelo.sh>"]
 edition = "2024"
