@@ -1,5 +1,5 @@
 [package]
-name = "serv"
+name = "eliza"
 version = "0.1.0"
 authors = ["Davi Melo <hello@dmelo.sh>"]
 edition = "2024"

@@ -1,5 +1,6 @@
 // TODO: add constants and auxiliar methods
-#[derive(Debug, PartialEq)]
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Errno(pub usize);
 
 impl Errno {
