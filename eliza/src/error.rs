@@ -1,5 +1,5 @@
-use core::fmt::{self, Debug};
 use crate::errno::Errno;
+use core::fmt::{self, Debug};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

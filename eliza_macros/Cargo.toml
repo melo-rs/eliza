@@ -1,0 +1,18 @@
+[package]
+name = "eliza_macros"
+description = "Eliza's proc macros."
+version = "0.1.0"
+authors = ["Davi Melo <hello@dmelo.sh>"]
+edition = "2024"
+license = "MIT"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
+syn = { version  = "3.0.5", features = ["full"] }
+
+[lints]
+workspace = true

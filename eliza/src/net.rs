@@ -1,5 +1,7 @@
 use crate::{
-    errno::Errno, error::Error, fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+    errno::Errno,
+    error::Error,
+    fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
 };
 use core::{ffi::c_int, mem::size_of};
 

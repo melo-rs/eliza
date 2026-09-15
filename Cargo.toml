@@ -1,15 +1,11 @@
-[package]
-name = "eliza"
-description = "A lightweight HTTP framework for Rust focused on performance without sacrificing ergonomics."
-version = "0.1.0"
-authors = ["Davi Melo <hello@dmelo.sh>"]
-edition = "2024"
-license = "MIT"
+[workspace]
+resolver = "3"
+members = [
+    "eliza",
+    "eliza_macros",
+]
 
-[lints.rust]
-unsafe_op_in_unsafe_fn = "forbid"
+[workspace.dependencies]
+eliza_macros = { path = "eliza_macros", version = "0.1.0" }
 
-[lints.clippy]
-undocumented_unsafe_blocks = "forbid"
-
-[dependencies]
+[workspace.lints.rust]

@@ -1,0 +1,17 @@
+[package]
+name = "eliza"
+description = "A lightweight HTTP framework for Rust focused on performance without sacrificing ergonomics."
+version = "0.1.0"
+authors = ["Davi Melo <hello@dmelo.sh>"]
+edition = "2024"
+license = "MIT"
+
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "forbid"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "forbid"
+
+[dependencies]
+eliza_macros = { workspace = true }
