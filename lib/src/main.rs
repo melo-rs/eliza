@@ -1,7 +1,6 @@
 #![feature(macro_metavar_expr)]
 
-use crate::routes::account::delete_account;
-use eliza::{patch, post, response::Response, routes, routing::Router};
+use eliza::{patch, post, routes};
 
 #[post("/accounts")]
 fn create_account() -> &'static str {
@@ -25,7 +24,7 @@ mod routes {
 }
 
 fn main() {
-    let router = routes!(create_account, update_profile, routes::account::delete_account);
+    let router = routes![create_account, update_profile, routes::account::delete_account];
 
     println!("{router:?}");
 }

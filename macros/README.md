@@ -1,6 +1,6 @@
 # Eliza Macros
 
-Procedural macros...
+Procedural macros for Eliza.
 
 ## License
 
