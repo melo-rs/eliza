@@ -3,16 +3,11 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use std::collections::VecDeque;
 use syn::{
-    Error, Ident, LitStr, Path, Result, Token, bracketed, parenthesized,
+    Error, Ident, LitStr, Path, Result, Token, Visibility, bracketed, parenthesized,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
 };
-
-mod kw {
-    syn::custom_keyword!(patterns);
-    syn::custom_keyword!(routes);
-}
 
 struct Route {
     method: u8,
@@ -36,35 +31,34 @@ impl Parse for Route {
     }
 }
 
-struct Routes {
+struct RouterParams {
+    visibility: Visibility,
+    name: Ident,
     patterns: Vec<Vec<u8>>,
     routes: Vec<Route>,
 }
 
-impl Parse for Routes {
+impl Parse for RouterParams {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
-        input.parse::<kw::patterns>()?;
-        input.parse::<Token![:]>()?;
+        let visibility_content;
+        bracketed!(visibility_content in input);
+
+        let visibility = if visibility_content.is_empty() {
+            Visibility::Inherited
+        } else {
+            visibility_content.parse()?
+        };
+
+        let name = input.parse()?;
 
         let patterns_content;
         bracketed!(patterns_content in input);
-
         let patterns = Punctuated::<LitStr, Token![,]>::parse_terminated(&patterns_content)?;
-
-        input.parse::<Token![,]>()?;
-
-        input.parse::<kw::routes>()?;
-        input.parse::<Token![:]>()?;
 
         let routes_content;
         bracketed!(routes_content in input);
 
         let routes = Punctuated::<Route, Token![,]>::parse_terminated(&routes_content)?;
-
-        // allow the trailing comma after `routes: [...]`.
-        if input.peek(Token![,]) {
-            input.parse::<Token![,]>()?;
-        }
 
         if patterns.len() != routes.len() {
             return Err(syn::Error::new(
@@ -74,6 +68,8 @@ impl Parse for Routes {
         }
 
         Ok(Self {
+            visibility,
+            name,
             patterns: patterns
                 .into_iter()
                 .map(|path| path.value().into_bytes())
@@ -101,9 +97,9 @@ fn method_order(method: &Ident) -> u8 {
 const MAX_ROUTES: usize = u16::MAX as usize + 1;
 
 pub(crate) fn build_router_macro(input: TokenStream) -> TokenStream {
-    let routes = parse_macro_input!(input as Routes);
+    let params = parse_macro_input!(input as RouterParams);
 
-    if routes.patterns.len() > MAX_ROUTES {
+    if params.patterns.len() > MAX_ROUTES {
         return Error::new(
             Span::call_site(),
             "more than u16::MAX + 1 routes are not supported",
@@ -112,7 +108,7 @@ pub(crate) fn build_router_macro(input: TokenStream) -> TokenStream {
         .into();
     }
 
-    let radix_tree = build_radix_tree(&routes.patterns, routes.routes);
+    let radix_tree = build_radix_tree(&params.patterns, params.routes);
 
     let RouterLayout {
         dispatch_arms,
@@ -142,15 +138,20 @@ pub(crate) fn build_router_macro(input: TokenStream) -> TokenStream {
         }
     });
 
+    let visibility = params.visibility;
+    let name = params.name;
+    let radix_tree_len = vertices.len();
+    let chunk_blob_len = chunk_blob.len();
+
     quote! {
-        ::eliza::routing::internal::make_router(
+        #visibility static #name: ::eliza::routing::Router<#radix_tree_len, #chunk_blob_len> = ::eliza::routing::internal::make_router(
             [#(#vertices),*],
             [#(#chunk_blob),*],
             |handler_id: usize| match handler_id {
                 #(#dispatch_arms)*
                 _ => unreachable!(),
             },
-        )
+        );
     }
     .into()
 }

@@ -2,6 +2,10 @@
 
 #[macro_use]
 pub(crate) mod syscall;
+pub(crate) mod constants;
+pub(crate) mod simd;
+pub(crate) mod parser;
+pub(crate) mod iter;
 
 pub mod errno;
 pub mod error;
@@ -11,6 +15,7 @@ pub mod net;
 pub mod protocol;
 pub mod response;
 pub mod routing;
+pub mod server;
 
 #[doc(inline)]
 pub use eliza_macros::{connect, delete, get, head, options, patch, post, put, trace};
@@ -21,11 +26,13 @@ pub use eliza_macros::__build_router;
 #[macro_export]
 macro_rules! routes {
     (
-        $(
-            $($route:ident)::+
-        ),*
-        $(,)?
-    ) => {{
+        $vis:vis static $name:ident = [
+            $(
+                $($route:ident)::+
+            ),*
+            $(,)?
+        ];
+    ) => {
         macro_rules! collect_routes {
             (
                 [
@@ -36,7 +43,7 @@ macro_rules! routes {
                 [$$($$patterns:tt)*]
                 [$$($$routes:tt)*]
             ) => {
-                $$($$head)::+::metadata!(
+                $$($$head)::+::metadata! {
                     $$($$head)::+,
                     collect_routes,
                     [
@@ -46,7 +53,7 @@ macro_rules! routes {
                     ],
                     [$$($$patterns)*],
                     [$$($$routes)*]
-                )
+                }
             };
 
             (
@@ -55,12 +62,10 @@ macro_rules! routes {
                 [$$($$routes:tt)*]
             ) => {
                 $crate::__build_router! {
-                    patterns: [
-                        $$($$patterns)*
-                    ],
-                    routes: [
-                        $$($$routes)*
-                    ],
+                    [$vis]
+                    $name
+                    [$$($$patterns)*]
+                    [$$($$routes)*]
                 }
             };
         }
@@ -74,5 +79,5 @@ macro_rules! routes {
             []
             []
         }
-    }};
+    };
 }

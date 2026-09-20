@@ -1,4 +1,11 @@
-pub use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+/// A raw file descriptor
+pub type RawFd = i32;
+
+/// A trait to extract the raw file descriptor from an underlying resource.
+pub trait AsRawFd {
+    /// Extracts the raw file descriptor.
+    fn as_raw_fd(&self) -> RawFd;
+}
 
 /// An owned file descriptor.
 ///
@@ -10,7 +17,7 @@ pub use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 #[repr(transparent)]
 pub struct OwnedFd(RawFd);
 
-impl FromRawFd for OwnedFd {
+impl OwnedFd {
     /// Constructs a new `OwnedFd` from the given raw file descriptor.
     ///
     /// # Safety
@@ -22,7 +29,7 @@ impl FromRawFd for OwnedFd {
     /// # Panics
     ///
     /// Panics if `fd` is negative.
-    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+    pub unsafe fn from_raw_fd(fd: RawFd) -> Self {
         assert!(fd >= 0, "fd >= 0");
         Self(fd)
     }

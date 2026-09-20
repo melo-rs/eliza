@@ -1,11 +1,12 @@
 use crate::{
     errno::Errno,
     error::Error,
-    fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+    fd::{AsRawFd, OwnedFd, RawFd},
 };
 use core::{ffi::c_int, mem::size_of};
 
 const SYS_SOCKET: usize = 41;
+const SYS_ACCEPT: usize = 43;
 const SYS_BIND: usize = 49;
 const SYS_LISTEN: usize = 50;
 
@@ -25,6 +26,12 @@ struct sockaddr_in {
     sin_port: u16,
     sin_addr: in_addr,
     sin_zero: [u8; 8],
+}
+
+#[repr(C)]
+struct sockaddr {
+    sa_family: u16,
+    sa_data: [u8; 14],
 }
 
 #[repr(transparent)]
@@ -60,16 +67,21 @@ pub struct Listener {
 
 impl Listener {
     pub fn bind(socket_address: SocketAddrV4) -> Result<Self, Error> {
-        let socket_fd = socket(AF_INET, SOCK_STREAM, 0)?;
+        let raw_fd = socket(AF_INET, SOCK_STREAM, 0)?;
 
-        bind(&socket_fd, &socket_address.0)?;
-        listen(&socket_fd, 128)?;
+        // SAFETY: On success, `socket` returns a fresh file descriptor owned by the
+        // caller, so transferring that ownership to `OwnedFd` is valid.
+        let socket_fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+
+        bind(socket_fd.as_raw_fd(), &socket_address.0)?;
+        listen(socket_fd.as_raw_fd(), 128)?;
 
         Ok(Self { socket_fd })
     }
 
-    pub fn accept(&self) -> Result<(), Error> {
-        todo!()
+    pub fn accept(&self) -> Result<RawFd, Error> {
+        let client_fd = accept(self.socket_fd.as_raw_fd())?;
+        Ok(client_fd)
     }
 }
 
@@ -79,7 +91,7 @@ impl AsRawFd for Listener {
     }
 }
 
-fn socket(domain: c_int, ty: c_int, protocol: c_int) -> Result<OwnedFd, Errno> {
+fn socket(domain: c_int, ty: c_int, protocol: c_int) -> Result<RawFd, Errno> {
     // SAFETY: The arguments match the expected `socket` syscall signature,
     // and `system_call!` passes them according to the target syscall ABI.
     let result = unsafe { system_call!(SYS_SOCKET, domain, ty, protocol) };
@@ -87,15 +99,12 @@ fn socket(domain: c_int, ty: c_int, protocol: c_int) -> Result<OwnedFd, Errno> {
     if result.is_negative() {
         Err(Errno(result.unsigned_abs()))
     } else {
-        // SAFETY: On success, `socket(2)` returns a fresh file descriptor owned by the
-        // caller, so transferring that ownership to `OwnedFd` is valid.
-        Ok(unsafe { OwnedFd::from_raw_fd(result as c_int) })
+        Ok(result as RawFd)
     }
 }
 
-fn bind(sockfd: &OwnedFd, addr: &sockaddr_in) -> Result<(), Errno> {
-    let result =
-        unsafe { system_call!(SYS_BIND, sockfd.as_raw_fd(), addr, size_of::<sockaddr_in>()) };
+fn bind(sockfd: RawFd, addr: &sockaddr_in) -> Result<(), Errno> {
+    let result = unsafe { system_call!(SYS_BIND, sockfd, addr, size_of::<sockaddr_in>()) };
 
     if result.is_negative() {
         Err(Errno(result.unsigned_abs()))
@@ -104,12 +113,29 @@ fn bind(sockfd: &OwnedFd, addr: &sockaddr_in) -> Result<(), Errno> {
     }
 }
 
-fn listen(sockfd: &OwnedFd, backlog: c_int) -> Result<(), Errno> {
-    let result = unsafe { system_call!(SYS_LISTEN, sockfd.as_raw_fd(), backlog) };
+fn listen(sockfd: RawFd, backlog: c_int) -> Result<(), Errno> {
+    let result = unsafe { system_call!(SYS_LISTEN, sockfd, backlog) };
 
     if result.is_negative() {
         Err(Errno(result.unsigned_abs()))
     } else {
         Ok(())
+    }
+}
+
+fn accept(sockfd: RawFd) -> Result<RawFd, Errno> {
+    let result = unsafe {
+        system_call!(
+            SYS_ACCEPT,
+            sockfd,
+            core::ptr::null_mut::<sockaddr>(),
+            core::ptr::null_mut::<c_int>()
+        )
+    };
+
+    if result.is_negative() {
+        Err(Errno(result.unsigned_abs()))
+    } else {
+        Ok(result as RawFd)
     }
 }
