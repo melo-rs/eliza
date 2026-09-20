@@ -4,6 +4,11 @@
 #[repr(transparent)]
 pub struct Method(u8);
 
+pub enum BadMethod {
+    Malformed,
+    Unknown,
+}
+
 impl Method {
     /// The HTTP `GET` method.
     ///
@@ -53,4 +58,57 @@ impl Method {
     pub const fn bit(self) -> u16 {
         1 << self.0
     }
+
+    pub fn from_slice(src: &[u8]) -> Result<Self, BadMethod> {
+        match src {
+            b"GET" => Ok(Self::GET),
+            b"PUT" => Ok(Self::PUT),
+            b"HEAD" => Ok(Self::HEAD),
+            b"POST" => Ok(Self::POST),
+            b"TRACE" => Ok(Self::TRACE),
+            b"PATCH" => Ok(Self::PATCH),
+            b"DELETE" => Ok(Self::DELETE),
+            b"CONNECT" => Ok(Self::CONNECT),
+            b"OPTIONS" => Ok(Self::OPTIONS),
+            _ => {
+                if is_token(src) {
+                    Err(BadMethod::Unknown)
+                } else {
+                    Err(BadMethod::Malformed)
+                }
+            }
+        }
+    }
+
+
+}
+
+/// Returns whether `slice` is a valid [`token`](https://datatracker.ietf.org/doc/html/rfc9110#section-5.6.2)
+fn is_token(slice: &[u8]) -> bool {
+    slice.iter().all(|slice| is_tchar(slice))
+}
+
+/// Returns whether `character` is a valid [`tchar`](https://datatracker.ietf.org/doc/html/rfc9110#section-5.6.2).
+fn is_tchar(character: &u8) -> bool {
+    matches!(
+        character,
+        b'0'..=b'9'
+            | b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'!'
+            | b'#'
+            | b'$'
+            | b'%'
+            | b'&'
+            | b'\''
+            | b'*'
+            | b'+'
+            | b'-'
+            | b'.'
+            | b'^'
+            | b'_'
+            | b'`'
+            | b'|'
+            | b'~'
+    )
 }

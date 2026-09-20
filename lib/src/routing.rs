@@ -1,12 +1,21 @@
+use crate::response::Response;
+
 #[must_use]
-pub struct Router<const RADIX_TREE_LEN: usize, const CHUNK_BLOB_LEN: usize, D> {
+pub struct Router<const RADIX_TREE_LEN: usize, const CHUNK_BLOB_LEN: usize> {
     radix_tree: [internal::Vertex; RADIX_TREE_LEN],
     chunk_blob: [u8; CHUNK_BLOB_LEN],
-    dispatch: D,
+    dispatch: fn(handler_id: usize) -> Response,
 }
 
-impl<const RADIX_TREE_LEN: usize, const CHUNK_BLOB_LEN: usize, D> core::fmt::Debug
-    for Router<RADIX_TREE_LEN, CHUNK_BLOB_LEN, D>
+impl<const RADIX_TREE_LEN: usize, const CHUNK_BLOB_LEN: usize>
+    Router<RADIX_TREE_LEN, CHUNK_BLOB_LEN>
+{
+    #[inline]
+    fn dispatch(&self, handler_id: usize) {}
+}
+
+impl<const RADIX_TREE_LEN: usize, const CHUNK_BLOB_LEN: usize> core::fmt::Debug
+    for Router<RADIX_TREE_LEN, CHUNK_BLOB_LEN>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Router")
@@ -50,14 +59,11 @@ pub mod internal {
     }
 
     #[doc(hidden)]
-    pub const fn make_router<const RADIX_TREE_LEN: usize, const CHUNK_BLOB_LEN: usize, D>(
+    pub const fn make_router<const RADIX_TREE_LEN: usize, const CHUNK_BLOB_LEN: usize>(
         radix_tree: [Vertex; RADIX_TREE_LEN],
         chunk_blob: [u8; CHUNK_BLOB_LEN],
-        dispatch: D,
-    ) -> Router<RADIX_TREE_LEN, CHUNK_BLOB_LEN, D>
-    where
-        D: Fn(usize) -> Response,
-    {
+        dispatch: fn(usize) -> Response,
+    ) -> Router<RADIX_TREE_LEN, CHUNK_BLOB_LEN> {
         Router {
             radix_tree,
             chunk_blob,
