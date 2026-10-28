@@ -15,4 +15,3 @@ undocumented_unsafe_blocks = "forbid"
 
 [dependencies]
 eliza_macros = { workspace = true }
-memchr = { version = "2.8.3", default-features = false }

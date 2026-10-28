@@ -4,6 +4,8 @@
 pub(crate) mod syscall;
 pub(crate) mod constants;
 pub(crate) mod simd;
+pub(crate) mod parser;
+pub(crate) mod iter;
 
 pub mod errno;
 pub mod error;
