@@ -83,12 +83,14 @@ impl Method {
 }
 
 /// Returns whether `slice` is a valid [`token`](https://datatracker.ietf.org/doc/html/rfc9110#section-5.6.2)
+#[inline]
 pub(crate) fn is_token(slice: &[u8]) -> bool {
-    slice.iter().all(|slice| is_tchar(slice))
+    slice.len() >= 1 && slice.iter().all(|&slice| is_tchar(slice))
 }
 
 /// Returns whether `character` is a valid [`tchar`](https://datatracker.ietf.org/doc/html/rfc9110#section-5.6.2).
-pub(crate) fn is_tchar(character: &u8) -> bool {
+#[inline]
+pub(crate) fn is_tchar(character: u8) -> bool {
     matches!(
         character,
         b'0'..=b'9'

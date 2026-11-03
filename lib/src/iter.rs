@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 pub(crate) struct Buffer<'a> {
     start: *const u8,
@@ -31,22 +31,6 @@ impl<'a> Buffer<'a> {
         self.end as usize - self.cursor as usize
     }
 
-    /// Peeks at `index` ahead of cursor.
-    ///
-    /// # Safety
-    ///
-    /// Caller must ensure that `index <= self.len()` and there are at least 
-    /// `N` bytes after it.
-    pub(crate) unsafe fn peek_ahead_unchecked<const N: usize>(&self, index: usize) -> [u8; N] {
-        // SAFETY: the caller ensures `self.cursor.add(n)` is in bounds of the
-        // slice allocation.
-        let ptr = unsafe { self.cursor.add(index) };
-
-        // SAFETY: this pointer points to valid area of the buffer containing at 
-        // least `N` bytes.
-        return unsafe { ptr.cast::<[u8; N]>().read() };
-    }
-
     /// Advances the buffer's cursor by `n`.
     ///
     /// # Safety
@@ -59,7 +43,44 @@ impl<'a> Buffer<'a> {
         self.cursor = unsafe { self.cursor.add(n) };
     }
 
+    /// Reads at `cursor.add(index)` without bounds checking.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure that `index < self.len()`, otherwise the resulting
+    /// pointer isn't within the buffer allocation.
+    pub(crate) unsafe fn peek_at_unchecked(&self, index: usize) -> u8 {
+        // SAFETY: the caller ensures that `self.cursor.add(index)` is within
+        // the remaining buffer.
+        unsafe { self.cursor.add(index).read() }
+    }
+
+    /// Reads `N` elements at cursor without bounds checking.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure that `N <= self.len()`.
     pub(crate) unsafe fn peek_n_unchecked<const N: usize>(&self) -> [u8; N] {
+        // SAFETY: [u8; N] has the same alignment as u8 (1b). The caller
+        // guarantees that at least N initialized bytes are readable from this
+        // pointer.
         unsafe { self.cursor.cast::<[u8; N]>().read() }
+    }
+
+    /// Reads `N` elements from `cursor.add(index)` without bounds checking.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure that `index <= self.len()` and
+    /// `N <= self.len() - index`, otherwise the resulting pointer isn't valid for
+    /// reading `N` elements.
+    pub(crate) unsafe fn peek_n_at_unchecked<const N: usize>(&self, index: usize) -> [u8; N] {
+        // SAFETY: the caller ensures `self.cursor.add(n)` is in bounds of the
+        // slice allocation.
+        let ptr = unsafe { self.cursor.add(index) };
+
+        // SAFETY: this pointer points to valid area of the buffer containing at
+        // least `N` bytes.
+        unsafe { ptr.cast::<[u8; N]>().read() }
     }
 }

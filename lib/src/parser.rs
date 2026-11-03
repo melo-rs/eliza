@@ -1,6 +1,9 @@
 use crate::{
     iter::Buffer,
-    protocol::method::{Method, is_tchar},
+    protocol::{
+        Version,
+        method::{Method, is_tchar},
+    },
 };
 
 /// The current stage of parsing an HTTP request.
@@ -9,6 +12,7 @@ pub(crate) enum PartialRequestState {
     #[default]
     Method,
     Path,
+    Version,
     Complete,
 }
 
@@ -33,6 +37,17 @@ enum ParseError {
     ///
     /// See [RFC 9110 § 9.1](https://datatracker.ietf.org/doc/html/rfc9110#section-9.1).
     UnknownMethod,
+
+    /// The request version does not match the HTTP `HTTP-version` grammar.
+    ///
+    /// See [RFC 9112 § 2.3](https://datatracker.ietf.org/doc/html/rfc9112#section-2.3).
+    MalformedVersion,
+
+    /// The request version is a valid `HTTP-version` but it is not supported.
+    ///
+    /// See [RFC 9110 § 2.5](https://datatracker.ietf.org/doc/html/rfc9110#section-2.5)
+    /// and [RFC 9110 § 15.6.6](https://datatracker.ietf.org/doc/html/rfc9110#section-15.6.6).
+    UnknownVersion,
 }
 
 impl PartialRequest {
@@ -71,41 +86,39 @@ fn parse_method(buffer: &mut Buffer) -> Result<Method, ParseError> {
             unsafe { buffer.advance(4) };
             Ok(Method::PUT)
         }
-        POST if unsafe { buffer.peek_ahead_unchecked(4) } == *b" " => {
+        POST if unsafe { buffer.peek_at_unchecked(4) } == b' ' => {
             unsafe { buffer.advance(5) };
             Ok(Method::POST)
         }
-        HEAD if unsafe { buffer.peek_ahead_unchecked::<1>(4) } == *b" " => {
+        HEAD if unsafe { buffer.peek_at_unchecked(4) } == b' ' => {
             unsafe { buffer.advance(5) }
             Ok(Method::HEAD)
         }
-        PATCH_PREFIX if unsafe { buffer.peek_ahead_unchecked::<2>(4) == *b"H " } => {
-            unsafe {
-                buffer.advance(6);
-            }
+        PATCH_PREFIX if unsafe { buffer.peek_n_at_unchecked::<2>(4) == *b"H " } => {
+            unsafe { buffer.advance(6) }
             Ok(Method::PATCH)
         }
-        TRACE_PREFIX if unsafe { buffer.peek_ahead_unchecked::<2>(4) == *b"E " } => {
+        TRACE_PREFIX if unsafe { buffer.peek_n_at_unchecked::<2>(4) == *b"E " } => {
             unsafe { buffer.advance(6) };
             Ok(Method::TRACE)
         }
-        DELETE_PREFIX if unsafe { buffer.peek_ahead_unchecked::<3>(4) == *b"TE " } => {
+        DELETE_PREFIX if unsafe { buffer.peek_n_at_unchecked::<3>(4) == *b"TE " } => {
             unsafe { buffer.advance(7) };
             Ok(Method::DELETE)
         }
-        CONNECT_PREFIX if unsafe { buffer.peek_ahead_unchecked::<4>(4) == *b"ECT " } => {
+        CONNECT_PREFIX if unsafe { buffer.peek_n_at_unchecked::<4>(4) == *b"ECT " } => {
             unsafe { buffer.advance(8) };
             Ok(Method::CONNECT)
         }
-        OPTIONS_PREFIX if unsafe { buffer.peek_ahead_unchecked::<4>(4) == *b"ONS " } => {
+        OPTIONS_PREFIX if unsafe { buffer.peek_n_at_unchecked::<4>(4) == *b"ONS " } => {
             unsafe { buffer.advance(8) };
             Ok(Method::OPTIONS)
         }
         _ => {
             let characters = unsafe { buffer.peek_n_unchecked::<8>() };
 
-            for (index, character) in characters.iter().enumerate() {
-                if character == &b' ' && index != 0 {
+            for (index, character) in characters.into_iter().enumerate() {
+                if character == b' ' && index != 0 {
                     return Err(ParseError::UnknownMethod);
                 }
 
@@ -119,13 +132,56 @@ fn parse_method(buffer: &mut Buffer) -> Result<Method, ParseError> {
     }
 }
 
+fn parse_version(buffer: &mut Buffer) -> Result<Version, ParseError> {
+    const SUPPORTED_VERSION_LENGTH: usize = 8;
+
+    const HTTP_10: [u8; SUPPORTED_VERSION_LENGTH] = *b"HTTP/1.0";
+    const HTTP_11: [u8; SUPPORTED_VERSION_LENGTH] = *b"HTTP/1.1";
+
+    if buffer.len() < SUPPORTED_VERSION_LENGTH {
+        todo!()
+    }
+
+    // SAFETY: we ensure `buffer.len() >= SUPPORTED_VERSION_LENGTH`, so peek
+    // and advance calls within this limit are all safe.
+    match unsafe { buffer.peek_n_unchecked::<SUPPORTED_VERSION_LENGTH>() } {
+        HTTP_10 => {
+            unsafe { buffer.advance(8) }
+            Ok(Version::HTTP_10)
+        }
+        HTTP_11 => {
+            unsafe { buffer.advance(8) }
+            Ok(Version::HTTP_11)
+        }
+        _ => {
+            // SAFETY: we ensure `buffer.len >= SUPPORTED_VERSION_LENGTH`, therefore
+            // at least 8 bytes are readable.
+            if unsafe { buffer.peek_n_unchecked::<4>() == *b"HTTP" }
+                && unsafe { buffer.peek_at_unchecked(4) } == b'/'
+                && is_decimal(unsafe { buffer.peek_at_unchecked(5) })
+                && unsafe { buffer.peek_at_unchecked(6) == b'.' }
+                && is_decimal(unsafe { buffer.peek_at_unchecked(7) })
+            {
+                Err(ParseError::UnknownVersion)
+            } else {
+                Err(ParseError::MalformedVersion)
+            }
+        }
+    }
+}
+
+#[inline]
+fn is_decimal(character: u8) -> bool {
+    character >= b'0' && character <= b'9'
+}
+
 #[cfg(test)]
 mod tests {
     use std::assert_matches;
 
     use crate::iter::Buffer;
-    use crate::parser::{ParseError, parse_method};
-    use crate::protocol::Method;
+    use crate::parser::{ParseError, parse_method, parse_version};
+    use crate::protocol::{Method, Version};
 
     macro_rules! assert_method {
         ($($method:ident),+ $(,)?) => {
@@ -229,5 +285,16 @@ mod tests {
         let mut buffer = Buffer::new(b"CONNECT ");
         assert_matches!(parse_method(&mut buffer), Ok(Method::CONNECT));
         assert_eq!(buffer.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_version_succeeds_with_known_versions() {
+        let mut buffer = Buffer::new(b"HTTP/1.0");
+        assert_matches!(parse_version(&mut buffer), Ok(Version::HTTP_10));
+        assert_eq!(buffer.len(), 0);
+
+        let mut buffer = Buffer::new(b"HTTP/1.1");
+        assert_matches!(parse_version(&mut buffer), Ok(Version::HTTP_11));
+        assert_eq!(buffer.len(), 0)
     }
 }
