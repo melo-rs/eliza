@@ -25,7 +25,7 @@ pub(crate) struct PartialRequest {
     method: Option<Method>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum ParseError {
     /// The request method does not match the HTTP `token` grammar.
     ///
@@ -175,126 +175,124 @@ fn is_decimal(character: u8) -> bool {
     character >= b'0' && character <= b'9'
 }
 
+fn parse_uri<'a>(buffer: &mut Buffer<'a>) -> Result<&'a [u8], ParseError> {
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
+    use super::*;
+    use crate::buffer;
+    use rstest::rstest;
 
-    use crate::iter::Buffer;
-    use crate::parser::{ParseError, parse_method, parse_version};
-    use crate::protocol::{Method, Version};
-
-    macro_rules! assert_method {
-        ($($method:ident),+ $(,)?) => {
-            $(
-                {
-                    let request = concat!(stringify!($method), " / HTTP/1.1").as_bytes();
-                    let mut buffer = Buffer::new(request);
-
-                    assert_matches!(parse_method(&mut buffer), Ok(Method::$method));
-                    assert_eq!(buffer.len(), b"/ HTTP/1.1".len());
-                }
-            )+
-        };
+    #[rstest]
+    #[case(b"GET / HTTP/1.1", Method::GET)]
+    #[case(b"PUT / HTTP/1.1", Method::PUT)]
+    #[case(b"POST / HTTP/1.1", Method::POST)]
+    #[case(b"HEAD / HTTP/1.1", Method::HEAD)]
+    #[case(b"PATCH / HTTP/1.1", Method::PATCH)]
+    #[case(b"TRACE / HTTP/1.1", Method::TRACE)]
+    #[case(b"DELETE / HTTP/1.1", Method::DELETE)]
+    #[case(b"CONNECT / HTTP/1.1", Method::CONNECT)]
+    #[case(b"OPTIONS / HTTP/1.1", Method::OPTIONS)]
+    fn test_parse_method_succeeds_with_known_methods(#[case] slice: &[u8], #[case] method: Method) {
+        let mut buffer = buffer!(slice);
+        let result = parse_method(&mut buffer);
+        assert!(result.is_ok_and(|m| m == method));
+        assert!(buffer.len() == 10);
     }
 
-    macro_rules! assert_error {
-        ($error:path; $($request:expr),+ $(,)?) => {
-            $(
-                {
-                    let request: &[u8] = $request;
-                    let mut buffer = Buffer::new(request);
-                    assert_matches!(parse_method(&mut buffer), Err($error));
-                    assert_eq!(buffer.len(), request.len());
-                }
-            )+
-        };
+    #[rstest]
+    #[case(b"CREATE / HTTP/1.1")]
+    #[case(b"CREATE / HTTP/1.1")]
+    #[case(b"BREW / HTTP/1.1")]
+    #[case(b"PROPFIND / HTTP/1.1")]
+    #[case(b"delete / HTTP/1.1")]
+    #[case(b"DeLETE / HTTP/1.1")]
+    #[case(b"G!T / HTTP/1.1")]
+    #[case(b"GET_ / HTTP/1.1")]
+    #[case(b"M-SEARCH / HTTP/1.1")]
+    #[case(b"GETTING / HTTP/1.1")]
+    #[case(b"PUTTY / HTTP/1.1")]
+    #[case(b"POSTER / HTTP/1.1")]
+    #[case(b"HEADERS / HTTP/1.1")]
+    #[case(b"TRACES / HTTP/1.1")]
+    #[case(b"PATCHED / HTTP/1.1")]
+    #[case(b"DELETE2 / HTTP/1.1")]
+    #[case(b"OPTIONSX / HTTP/1.1")]
+    #[case(b"CONNECTED / HTTP/1.1")]
+    fn test_parse_method_fails_with_unknown_but_valid_methods(#[case] slice: &[u8]) {
+        let mut buffer = buffer!(slice);
+        let result = parse_method(&mut buffer);
+        assert!(result.is_err_and(|err| err == ParseError::UnknownMethod));
+        assert!(buffer.len() == slice.len());
     }
 
-    #[test]
-    fn test_parse_method_succeeds_with_known_methods() {
-        assert_method!(GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH);
+    #[rstest]
+    #[case(b" / HTTP/1.1")]
+    #[case(b"G@T / HTTP/1.1")]
+    #[case(b"G/T / HTTP/1.1")]
+    #[case(b"GE(T / HTTP/1.1")]
+    #[case(b"POST@ / HTTP/1.1")]
+    #[case(b"GET/ HTTP/1.1")]
+    #[case(b"GET\t/ HTTP/1.1")]
+    #[case(b"GET\r/ HTTP/1.1")]
+    #[case(b"GET\n/ HTTP/1.1")]
+    #[case(b"G\x00T / HTTP/1.1")]
+    #[case(b"G\x7FT / HTTP/1.1")]
+    #[case(b"G\xFFT / HTTP/1.1")]
+    fn test_parse_method_fails_with_malformed_methods(#[case] slice: &[u8]) {
+        let mut buffer = buffer!(slice);
+        let result = parse_method(&mut buffer);
+        assert!(result.is_err_and(|err| err == ParseError::MalformedMethod));
+        assert!(buffer.len() == slice.len());
     }
 
-    #[test]
-    fn test_parse_method_fails_with_unknown_but_valid_methods() {
-        assert_error!(ParseError::UnknownMethod;
-            // Unknown methods.
-            b"CREATE / HTTP/1.1",
-            b"BREW / HTTP/1.1",
-            b"PROPFIND / HTTP/1.1",
-
-            // Case sensitivity.
-            b"get / HTTP/1.1",
-            b"GeT / HTTP/1.1",
-
-            // Valid token characters.
-            b"G!T / HTTP/1.1",
-            b"GET_ / HTTP/1.1",
-            b"M-SEARCH / HTTP/1.1",
-
-            // Known-method prefixes must not match.
-            b"GETTING / HTTP/1.1",
-            b"PUTTY / HTTP/1.1",
-            b"POSTER / HTTP/1.1",
-            b"HEADERS / HTTP/1.1",
-            b"TRACES / HTTP/1.1",
-            b"PATCHED / HTTP/1.1",
-            b"DELETE2 / HTTP/1.1",
-            b"OPTIONSX / HTTP/1.1",
-            b"CONNECTED / HTTP/1.1",
-        );
+    #[rstest]
+    #[case(b"HTTP/1.0", Version::HTTP_10)]
+    #[case(b"HTTP/1.1", Version::HTTP_11)]
+    #[case(b"HTTP/1.0\r\n", Version::HTTP_10)]
+    #[case(b"HTTP/1.1\r\n", Version::HTTP_11)]
+    fn test_parse_version_succeeds_with_known_versions(
+        #[case] slice: &[u8],
+        #[case] version: Version,
+    ) {
+        let mut buffer = buffer!(slice);
+        let result = parse_version(&mut buffer);
+        assert!(result.is_ok_and(|v| v == version));
+        assert!(buffer.len() == slice.len() - 8);
     }
 
-    #[test]
-    fn test_parse_method_fails_with_malformed_methods() {
-        assert_error!(ParseError::MalformedMethod;
-            // Empty method.
-            b" / HTTP/1.1",
-
-            // Invalid token characters.
-            b"G@T / HTTP/1.1",
-            b"G/T / HTTP/1.1",
-            b"GE(T / HTTP/1.1",
-
-            // Invalid characters following a known prefix.
-            b"POST@ / HTTP/1.1",
-            b"GET/ HTTP/1.1",
-
-            // Strictly reject non-SP separators.
-            b"GET\t/ HTTP/1.1",
-            b"GET\r/ HTTP/1.1",
-            b"GET\n/ HTTP/1.1",
-
-            // Control and non-ASCII bytes.
-            b"G\x00T / HTTP/1.1",
-            b"G\x7FT / HTTP/1.1",
-            b"G\xFFT / HTTP/1.1",
-        );
+    #[rstest]
+    #[case(b"HTTP/0.9")]
+    #[case(b"HTTP/1.2")]
+    #[case(b"HTTP/1.9")]
+    #[case(b"HTTP/2.0")]
+    #[case(b"HTTP/3.0")]
+    #[case(b"HTTP/9.9")]
+    fn test_parse_version_fails_with_unknown_versions(#[case] slice: &[u8]) {
+        let mut buffer = buffer!(slice);
+        let result = parse_version(&mut buffer);
+        assert!(result.is_err_and(|err| err == ParseError::UnknownVersion));
+        assert!(buffer.len() == slice.len())
     }
 
-    #[test]
-    fn test_parse_method_with_exactly_eight_bytes() {
-        let mut buffer = Buffer::new(b"GET /abc");
-        assert_matches!(parse_method(&mut buffer), Ok(Method::GET));
-        assert_eq!(buffer.len(), 4);
-
-        let mut buffer = Buffer::new(b"OPTIONS ");
-        assert_matches!(parse_method(&mut buffer), Ok(Method::OPTIONS));
-        assert_eq!(buffer.len(), 0);
-
-        let mut buffer = Buffer::new(b"CONNECT ");
-        assert_matches!(parse_method(&mut buffer), Ok(Method::CONNECT));
-        assert_eq!(buffer.len(), 0);
-    }
-
-    #[test]
-    fn test_parse_version_succeeds_with_known_versions() {
-        let mut buffer = Buffer::new(b"HTTP/1.0");
-        assert_matches!(parse_version(&mut buffer), Ok(Version::HTTP_10));
-        assert_eq!(buffer.len(), 0);
-
-        let mut buffer = Buffer::new(b"HTTP/1.1");
-        assert_matches!(parse_version(&mut buffer), Ok(Version::HTTP_11));
-        assert_eq!(buffer.len(), 0)
+    #[rstest]
+    #[case(b"hTTP/1.1")]
+    #[case(b"HTTX/1.1")]
+    #[case(b"HTTP-1.1")]
+    #[case(b"HTTP/1/1")]
+    #[case(b"HTTP/1.X")]
+    #[case(b"HTTP/X.1")]
+    #[case(b"HTTP/1. ")]
+    #[case(b"HTTP/1.\0")]
+    #[case(b"HTTP/1.\xFF")]
+    #[case(b" HTTP/1.1")]
+    #[case(b"HTTP/1.X\r\nHost: crates.io\r\n")]
+    fn test_parse_version_fails_with_malformed_versions(#[case] slice: &[u8]) {
+        let mut buffer = buffer!(slice);
+        let result = parse_version(&mut buffer);
+        assert!(result.is_err_and(|err| err == ParseError::MalformedVersion));
+        assert!(buffer.len() == slice.len());
     }
 }

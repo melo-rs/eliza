@@ -84,3 +84,10 @@ impl<'a> Buffer<'a> {
         unsafe { ptr.cast::<[u8; N]>().read() }
     }
 }
+
+#[macro_export]
+macro_rules! buffer {
+    ($slice:expr) => {
+        Buffer::new($slice)
+    }
+}
